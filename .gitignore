@@ -2,7 +2,13 @@
 .env
 credentials.json
 client_secret*.json
+login_client.json
 token.json
+
+# Cloudflare tunnel: the downloaded program and its log
+cloudflared
+cloudflared.exe
+tunnel.log
 
 # generated / local
 .venv/
