@@ -84,7 +84,8 @@ Open **http://localhost:8000/login** (use `localhost`, not `127.0.0.1`).
 
 ### B. From any device — Cloudflare tunnel
 
-Download `cloudflared` (free, no account) and put it in this folder:
+Download `cloudflared` (free, no account; tested with version 2026.9.1) and put it in
+this folder — it is not in the repository because each system needs its own file:
 - Windows: https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe
   (rename to `cloudflared.exe`)
 - Linux: https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
@@ -117,6 +118,30 @@ Then open `https://some-words.trycloudflare.com/login` on any device.
    private window for the manager.)
 4. The employee gets the result email; **GET /nghiphep/1** shows `APPROVED`
 5. Click the other button → "Already answered". A Gmail account at `/login` → 403.
+
+## Demo with two people (tunnel)
+
+A friend plays the **manager** and approves from **his own phone**.
+
+**Before** (once):
+1. His TDTU address is a **Test user** in Google Cloud
+2. His address is under `managers` in `approved.json` (yours under `employees`)
+3. `python run_with_tunnel.py` → add the printed redirect URI to the Web client → Enter
+
+**Then:**
+1. You open `<tunnel address>/login`, sign in, and in `/docs` send **POST /nghiphep**
+   with `"manager_email": "<his TDTU address>"`
+2. He opens the email on his phone → **Yes, approve** → signs in with **his** TDTU
+   account → "Request approved"
+3. You get the result email; **GET /nghiphep/1** shows `APPROVED`
+4. Bonus: you click his button while signed in as yourself → **"Wrong account"** (403)
+
+Keep in mind:
+- He must **click a button**. Replying to the email does nothing — the app does not read
+  replies.
+- Send the request **after** the tunnel starts: the buttons contain the tunnel address.
+- Keep your laptop and the tunnel **running** until he clicks. Restarting forgets the request
+  and changes the address.
 
 ## Troubleshooting
 
