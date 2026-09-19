@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Absence request #{{ req.id }}{% endblock %}
+{% block heading %}Absence request #{{ req.id }}{% endblock %}
+{% block content %}
+<p>Hello, <strong>{{ req.employee_email }}</strong> has asked for your approval:</p>
+<table role="presentation" cellpadding="8" cellspacing="0" width="100%"
+       style="border:1px solid #dadce0;border-collapse:collapse;font-size:14px;">
+  <tr><td style="border:1px solid #dadce0;background:#f8f9fa;width:120px;"><strong>From</strong></td>
+      <td style="border:1px solid #dadce0;">{{ req.from_date }}</td></tr>
+  <tr><td style="border:1px solid #dadce0;background:#f8f9fa;"><strong>To</strong></td>
+      <td style="border:1px solid #dadce0;">{{ req.to_date }}</td></tr>
+  <tr><td style="border:1px solid #dadce0;background:#f8f9fa;"><strong>Reason</strong></td>
+      <td style="border:1px solid #dadce0;">{{ req.reason }}</td></tr>
+</table>
+
+<p style="margin:24px 0 12px;"><strong>Your decision:</strong></p>
+<table role="presentation" cellpadding="0" cellspacing="0"><tr>
+  <td style="padding-right:12px;">
+    <a href="{{ yes_url }}"
+       style="display:inline-block;background:#188038;color:#ffffff;padding:12px 28px;
+              border-radius:6px;text-decoration:none;font-weight:bold;">Yes, approve</a>
+  </td>
+  <td>
+    <a href="{{ no_url }}"
+       style="display:inline-block;background:#d93025;color:#ffffff;padding:12px 28px;
+              border-radius:6px;text-decoration:none;font-weight:bold;">No, reject</a>
+  </td>
+</tr></table>
+<p style="font-size:13px;color:#5f6368;margin-top:20px;">
+  Click one button. The answer works once and the employee is notified automatically.</p>
+{% endblock %}

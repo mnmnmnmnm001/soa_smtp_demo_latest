@@ -1,0 +1,11 @@
+# secrets - never commit or share these
+.env
+credentials.json
+client_secret*.json
+token.json
+
+# generated / local
+.venv/
+__pycache__/
+.pytest_cache/
+.vscode/

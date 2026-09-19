@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Absence request #{{ req.id }} {{ req.status }}{% endblock %}
+{% block color %}{% if req.status == "APPROVED" %}#188038{% else %}#d93025{% endif %}{% endblock %}
+{% block heading %}Absence request {{ req.status | lower }}{% endblock %}
+{% block content %}
+<p>Your absence request <strong>#{{ req.id }}</strong>
+   ({{ req.from_date }} &rarr; {{ req.to_date }}) was
+   <strong>{{ req.status | lower }}</strong> by {{ req.manager_email }}.</p>
+{% if req.status == "APPROVED" %}
+<p>Enjoy your time off!</p>
+{% else %}
+<p>Please talk to your manager if you need more details.</p>
+{% endif %}
+{% endblock %}

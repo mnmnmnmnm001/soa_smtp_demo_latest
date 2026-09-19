@@ -1,0 +1,4 @@
+{
+  "employees": ["employee@example.com"],
+  "managers": ["manager@example.com"]
+}
