@@ -83,25 +83,25 @@ Security in four lines:
 
 ### Google Cloud (once)
 
-1. console.cloud.google.com → **New project**
+1. [console.cloud.google.com](https://console.cloud.google.com/getting-started) → **New project**
 2. APIs & Services → Library → **Gmail API** → **Enable**
 3. **Google Auth platform** → Audience **External**, keep the app in *Testing*
-4. **Audience → Test users** → add **both** TDTU accounts (worker and manager)
+4. **Audience → Test users** → add **both** TDTU accounts (worker and manager (@student.tdtu.edu.vn))
 5. **Clients → Create client → Web application** → Authorized redirect URI
    `http://localhost:8001/auth/callback` → download the JSON →
    rename to **`login_client.json`** in this folder
 
-At sign-in each person approves two things: who they are (`openid email`) and
+At sign-in each person approves 2 things: who they are (`openid email`) and
 permission to send from their mailbox (`https://mail.google.com/`).
 
 ### Install and configure
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
+source .venv/bin/activate                #Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env               # set SESSION_SECRET, keep BASE_URL matching your port
-cp approved.example.json approved.json   # put the two real TDTU addresses here
+cp .env.example .env                     #set SESSION_SECRET, keep BASE_URL matching your port
+cp approved.example.json approved.json   #put the 2 real TDTU addresses here
 ```
 
 ### Run
@@ -110,12 +110,12 @@ cp approved.example.json approved.json   # put the two real TDTU addresses here
 uvicorn app.main:app --port 8001
 ```
 Open **http://localhost:8001/login** — use `localhost`, not `127.0.0.1`
-(the login cookie belongs to one host name).
+(the login cookie belongs to 1 host name).
 
 ## 4. Testing the flow
 
-You need **two browser sessions**, because one cookie jar holds one signed-in person:
-two Chrome profiles, or a normal window plus an incognito window. A single window
+You need **2 browser sessions**, because 1 cookie jar holds 1 signed-in person:
+two profiles, or a normal window plus an incognito window. A single window
 also works if you re-run `/login` to switch account before clicking the button.
 
 | # | Where | Do this | Expect |
