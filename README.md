@@ -1,164 +1,168 @@
-# Absence Request Demo — SMTP + OAuth 2.0 + Sign in with TDTU
+# Absence Request Demo — FastAPI + SMTP with OAuth 2.0 (Google Cloud)
 
-An employee asks for time off; the manager gets an HTML email with **[Yes] / [No]**
-buttons; one click saves the answer and emails the employee.
+A seminar demo of **email service integration**: an employee asks for time off, the
+manager receives an HTML email with **[Yes] / [No]** buttons, and one click records
+the answer and emails the employee back.
 
-- Email is sent with **SMTP** (smtp.gmail.com:587), logging in with an **OAuth 2.0
-  token** from **Google Cloud** instead of a password.
-- Employees and managers **sign in with their TDTU Google account**.
-- No UI of its own: use Swagger at `/docs` and the inboxes.
+## 1. Background
+
+Sending email from an application used to mean putting a mailbox password in the
+code. That single string gives whoever holds it **complete, permanent access** to
+the mailbox, and Google has been switching it off for exactly that reason.
+
+This demo shows the modern alternative:
+
+* **SMTP** — the standard email protocol (RFC 5321), spoken to `smtp.gmail.com:587`
+* **STARTTLS** — the connection is encrypted before anything secret is sent
+* **XOAUTH2** — instead of a password, the login carries an **OAuth 2.0 access token**
+* **Google Cloud** — where the app is registered, so a mailbox owner can grant it
+  a named, expiring, revocable permission on Google's own consent screen
+* **Sign in with Google (OpenID Connect)** — only TDTU accounts may use the system
+
+The result: **two TDTU accounts email each other** through their own mailboxes, and
+the application never sees anybody's password.
+
+### Who does what
+
+| Role | Plays | Needs |
+|---|---|---|
+| **Employee / worker** | asks for the absence; **their** mailbox sends the request | a TDTU account |
+| **Manager** | approves or rejects; **their** mailbox sends the answer | a TDTU account |
+| **Google Cloud** | registers the app, runs the consent screen, issues tokens | one Web OAuth client |
+| **Gmail** | the SMTP server, the MTA and the delivery | nothing to configure |
+
+There is **no system mailbox** and no shared password.
+
+## 2. Overview of the flow
 
 ```
-Employee ─sign in─▶ POST /nghiphep ─▶ API ──SMTP──▶ Manager's inbox
-                                                        │ clicks Yes / No (signed in)
-Employee's inbox ◀──SMTP── result email ◀── API ◀───────┘
+ worker ──/login──▶ Google ──consent──▶ app stores his token
+        │
+        └──POST /nghiphep──▶ app: saved PENDING + secret token
+                                │  SMTP (worker's token)
+                                ▼
+                        manager's inbox: [Yes] [No]
+                                │  clicks a button
+                                ▼
+                app: token ok? signed in as THIS manager?
+                                │  yes -> APPROVED / REJECTED
+                                │  SMTP (manager's token)
+                                ▼
+                        worker's inbox: the result
 ```
 
-**Files:** `app/main.py` (routes) · `app/auth.py` (TDTU sign-in) · `app/mail.py` (SMTP + emails) ·
-`app/store.py` (data, in memory) · `approved.json` (who may take part) · `templates/` (HTML emails) ·
-`check_gmail.py` (authorize the sender once) · `run_with_tunnel.py` (public address)
+Security in four lines:
 
-## How it works
+* the buttons carry a **random secret token**; the API never returns it
+* the token alone is not enough — the clicker must be **signed in as that manager**,
+  so a forwarded email is useless
+* a decision is written **once** (a lock makes check-then-write one step) and the
+  links expire after 48 h
+* `approved.json` says who may ask and who may approve; nobody approves their own
 
-- **Sign in with TDTU (OpenID Connect).** `/login` sends you to Google; only verified
-  `@tdtu.edu.vn` / `@student.tdtu.edu.vn` accounts are accepted. It asks only for
-  `openid email` — who you are, nothing in your mailbox. Your login is kept in a signed cookie.
-- **Approved list.** Login proves *who* you are; `approved.json` decides *what* you may do:
-  who may ask (`employees`) and who may approve (`managers`). Others get **403**.
-- **Secret link + login.** Each request has a random token inside the two buttons; the API
-  never returns it. A click counts only if the token matches **and** you are signed in as that
-  request's manager. It works **once** and expires after **48 h**. A forwarded email is useless.
-- **SMTP login (XOAUTH2).** The app connects to smtp.gmail.com:587, encrypts with **STARTTLS**,
-  then logs in with the token instead of a password.
-- **Role of Google Cloud: the login provider.** It does not send mail — Gmail's SMTP server
-  does. Google Cloud registers the app (two OAuth clients) and runs the consent screen.
-- **Scope: full mailbox.** Google only accepts OAuth logins over SMTP with
-  `https://mail.google.com/` (a send-only token is refused with `535`). So use a mailbox that
-  holds nothing sensitive, keep `token.json` secret and revoke it after the demo.
+### The code
 
-## Setup
+| File | Job |
+|---|---|
+| `app/main.py` | the HTTP routes and all the checks |
+| `app/auth.py` | Sign in with Google (TDTU only) + each person's send permission |
+| `app/mail.py` | SMTP + XOAUTH2; sends as the signed-in person |
+| `app/store.py` | the data (one dictionary in memory) and the approved list |
+| `templates/` | the two HTML emails and the page shown after a click |
+| `approved.json` | who may ask (`employees`) and who may approve (`managers`) |
 
-### 1. Google Cloud (signed in as the project owner)
+| Endpoint | Purpose |
+|---|---|
+| `GET /login` | sign in (`?force=1` always shows the consent screen) |
+| `GET /me` · `GET /logout` | who am I · sign out and revoke at Google |
+| `POST /nghiphep` | create a request (the employee is whoever is signed in) |
+| `GET /nghiphep/{id}/decision` | the link behind the Yes/No buttons |
+| `GET /nghiphep` · `GET /nghiphep/{id}` | read your own requests |
+
+## 3. Setup
+
+### Google Cloud (once)
 
 1. console.cloud.google.com → **New project**
-2. APIs & Services → Library → **Gmail API** → Enable
-3. Google Auth platform → Get started → Audience **External** (keep it in *Testing*)
-4. Audience → **Test users** → add **every account that will be used**: the sending
-   mailbox, the employee and the manager
-5. Clients → Create client → **Desktop app** → download JSON → rename to
-   **`credentials.json`** (used to authorize the sending mailbox)
-6. Clients → Create client → **Web application** → Authorized redirect URIs:
-   `http://localhost:8000/auth/callback` → download JSON → rename to **`login_client.json`**
-   (used for sign-in)
+2. APIs & Services → Library → **Gmail API** → **Enable**
+3. **Google Auth platform** → Audience **External**, keep the app in *Testing*
+4. **Audience → Test users** → add **both** TDTU accounts (worker and manager)
+5. **Clients → Create client → Web application** → Authorized redirect URI
+   `http://localhost:8001/auth/callback` → download the JSON →
+   rename to **`login_client.json`** in this folder
 
-Put both JSON files in this folder. Tip: name the clients *SMTP Sender* and *TDTU Login*.
+At sign-in each person approves two things: who they are (`openid email`) and
+permission to send from their mailbox (`https://mail.google.com/`).
 
-### 2. Install and configure
+### Install and configure
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env             # Windows: copy .env.example .env
+cp .env.example .env               # set SESSION_SECRET, keep BASE_URL matching your port
+cp approved.example.json approved.json   # put the two real TDTU addresses here
 ```
-In `.env`: set `MAIL_ADDRESS` (the sending mailbox) and a random `SESSION_SECRET`.
-In `approved.json`: put the real employee and manager addresses.
-One account may appear in both lists for a one-person demo.
 
-### 3. Authorize the sending mailbox (once)
+### Run
 
 ```bash
-python check_gmail.py
+uvicorn app.main:app --port 8001
 ```
-Sign in as the **sending** mailbox → **Advanced → Go to app (unsafe)** → tick the Gmail
-permission → Continue. A test email arrives in that inbox.
+Open **http://localhost:8001/login** — use `localhost`, not `127.0.0.1`
+(the login cookie belongs to one host name).
 
-## Run
+## 4. Testing the flow
 
-### A. On this computer only
+You need **two browser sessions**, because one cookie jar holds one signed-in person:
+two Chrome profiles, or a normal window plus an incognito window. A single window
+also works if you re-run `/login` to switch account before clicking the button.
 
-```bash
-uvicorn app.main:app --reload
-```
-Open **http://localhost:8000/login** (use `localhost`, not `127.0.0.1`).
+| # | Where | Do this | Expect |
+|---|---|---|---|
+| 1 | window A | `/login` → sign in as the **worker**, tick the send-email box | lands on `/docs` |
+| 2 | window A | `GET /me` | the worker's address, `"can_send": true` |
+| 3 | window A | `POST /nghiphep` with `manager_email`, `reason`, `from_date`, `to_date` | `201`, `"status": "PENDING"` |
+| 4 | manager's inbox | open `[ABSENT #1] …` (check **Spam** the first time) | email **from the worker's address**, with two buttons |
+| 5 | window B | click **Yes, approve** | Google sign-in if needed → **"Request approved"** |
+| 6 | worker's inbox | | result email **from the manager's address** |
+| 7 | window A | `GET /nghiphep/1` | `"status": "APPROVED"`, and no token in the response |
 
-### B. From any device — Cloudflare tunnel
+### Worth showing as well
 
-Download `cloudflared` (free, no account; tested with version 2026.9.1) and put it in
-this folder — it is not in the repository because each system needs its own file:
-- Windows: https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe
-  (rename to `cloudflared.exe`)
-- Linux: https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
-  (rename to `cloudflared`, then `chmod +x cloudflared`)
-- macOS: `brew install cloudflared`
+| Try | Expect | Demonstrates |
+|---|---|---|
+| Click the other button in the same email | "Already answered" | a decision happens once |
+| Change one character of the token in the URL | "Invalid link" | the secret authorises the click |
+| Click the manager's link while signed in as the worker | "Wrong account" | a forwarded email is useless |
+| Open `/nghiphep` in a window that is not signed in | `401` | reasons are private |
+| `/login` with a non-TDTU (e.g. Gmail) account | `403` | domain restriction |
+| Ask with yourself as manager | `400` | no self-approval |
+| `/logout` | `permission_revoked_at_google: true` | the grant is really cancelled |
 
-```bash
-python run_with_tunnel.py
-```
-It starts the tunnel, writes the public address into `.env` as `BASE_URL`, and prints a
-redirect URI like `https://some-words.trycloudflare.com/auth/callback`.
-**Add it to the Web (login) client in Google Cloud → Save**, wait a minute, press **Enter**.
-Then open `https://some-words.trycloudflare.com/login` on any device.
+## 5. Points to explain in the seminar
 
-> The address changes **every run**: add the new redirect URI each time, and buttons in
-> emails sent before stop working. Ctrl+C stops the tunnel and the server.
-> Warnings about *ICMP*, *buffer size* or *QUIC* in `tunnel.log` are harmless.
+* **Google Cloud is the login provider, not a mail server.** Gmail's SMTP server sends
+  the mail. Google Cloud registers the app and issues the token that replaces the password.
+* **The scope is the full mailbox** (`https://mail.google.com/`), because Google only
+  accepts OAuth over SMTP with that scope — a send-only token is refused with `535`.
+  The Gmail API would allow send-only; that is the trade-off of using real SMTP.
+* **Authentication vs authorization.** Signing in proves *who* you are (OpenID Connect);
+  `approved.json` decides *what* you may do.
+* **Least privilege, revocably granted.** The owner approves on Google's own page,
+  the token expires, and it can be revoked for this app alone.
+* **The SMTP conversation**: connect 587 → STARTTLS → AUTH XOAUTH2 → MAIL FROM /
+  RCPT TO / DATA. The login is only base64, so it must travel inside TLS.
+* **HTML email**: `multipart/alternative` (text + HTML), inline CSS, tables instead of
+  flexbox, and Jinja2 autoescaping so a reason containing `<script>` stays text.
 
-## Demo
+## 6. Limits
 
-1. Employee: open `/login`, sign in → you land on `/docs`; **GET /me** shows who you are
-2. **POST /nghiphep**:
-   ```json
-   {"manager_email": "manager@tdtu.edu.vn", "reason": "Family trip",
-    "from_date": "2026-10-01", "to_date": "2026-10-03"}
-   ```
-   The employee is whoever is signed in.
-3. Manager: open the email (check **Spam** first time) → **Yes, approve**. Not signed in →
-   Google sign-in first, then back to the button. (Same browser for both roles: use a
-   private window for the manager.)
-4. The employee gets the result email; **GET /nghiphep/1** shows `APPROVED`
-5. Click the other button → "Already answered". A Gmail account at `/login` → 403.
+* Requests and permissions live **in memory**: restarting the server forgets them.
+* Testing mode: only listed test users may sign in, and permissions expire after 7 days.
+* Sign-in uses redirect URIs registered in Google Cloud, so the demo runs on `localhost`.
+  Another address (a tunnel, a server) must be registered there first.
+* The buttons are GET links; a production system would show a confirmation page and POST.
+* Google may ask for 2-step verification before granting mailbox access in a new browser.
 
-## Demo with two people (tunnel)
-
-A friend plays the **manager** and approves from **his own phone**.
-
-**Before** (once):
-1. His TDTU address is a **Test user** in Google Cloud
-2. His address is under `managers` in `approved.json` (yours under `employees`)
-3. `python run_with_tunnel.py` → add the printed redirect URI to the Web client → Enter
-
-**Then:**
-1. You open `<tunnel address>/login`, sign in, and in `/docs` send **POST /nghiphep**
-   with `"manager_email": "<his TDTU address>"`
-2. He opens the email on his phone → **Yes, approve** → signs in with **his** TDTU
-   account → "Request approved"
-3. You get the result email; **GET /nghiphep/1** shows `APPROVED`
-4. Bonus: you click his button while signed in as yourself → **"Wrong account"** (403)
-
-Keep in mind:
-- He must **click a button**. Replying to the email does nothing — the app does not read
-  replies.
-- Send the request **after** the tunnel starts: the buttons contain the tunnel address.
-- Keep your laptop and the tunnel **running** until he clicks. Restarting forgets the request
-  and changes the address.
-
-## Troubleshooting
-
-| Problem | Fix |
-|---|---|
-| `redirect_uri_mismatch` at sign-in | add the exact `.../auth/callback` URI to the **Web** client, Save, wait a few minutes |
-| `access_denied` | add the account as a **Test user** |
-| 403 "Only TDTU accounts" | sign in with a TDTU account (or change `ALLOWED_DOMAINS`) |
-| 403 "not on the approved … list" | add the address to `approved.json`, right role |
-| 401 "Sign in first" | open `/login` in the **same** browser as `/docs` |
-| "Wrong account" on a button | `/logout`, sign in as the request's manager |
-| `Gmail is not authorized` | run `python check_gmail.py` |
-| `535` from SMTP | token for the wrong account/scope: delete `token.json`, re-run `check_gmail.py`; right after a first approval, wait a minute and retry |
-| timed out to smtp.gmail.com:587 | the network blocks SMTP (common on school Wi-Fi): use a phone hotspot |
-| `invalid_grant` / expired | Testing-mode tokens last 7 days: delete `token.json`, re-run `check_gmail.py` |
-| "Invalid link" after restart | data is in memory — send a new request |
-| port already in use | `uvicorn app.main:app --port 8001`, set `BASE_URL` and the redirect URI to 8001 |
-
-**Never share** `.env`, `credentials.json`, `login_client.json`, `token.json`.
-Deleting the Desktop client in Google Cloud cancels the sending token.
+**Never commit** `.env`, `login_client.json` or `approved.json` (real addresses).
