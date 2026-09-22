@@ -1,0 +1,106 @@
+WHAT TO PREPARE FOR THIS DEMO
+=============================
+Absence request demo - FastAPI + SMTP with OAuth 2.0 + Sign in with TDTU
+
+
+1. ACCOUNTS  (2 TDTU accounts, you must be able to open both mailboxes)
+---------------------------------------------------------------------
+[ ] Worker  account: ....................@student.tdtu.edu.vn
+[ ] Manager account: ....................@student.tdtu.edu.vn
+[ ] You can receive the 2-step verification code for BOTH (phone with you)
+    Google asks for it the first time an account grants mailbox access.
+
+
+2. GOOGLE CLOUD  (console.cloud.google.com, one project)
+--------------------------------------------------------
+[ ] Project created
+[ ] APIs & Services -> Library -> Gmail API -> ENABLED
+[ ] Google Auth platform -> Audience = External, app left in "Testing"
+[ ] Audience -> Test users -> BOTH accounts added and SAVED
+        (an account that is not listed cannot sign in: "Access blocked")
+[ ] Clients -> Create client -> Web application
+        Authorized redirect URI:  http://localhost:8001/auth/callback
+        (exact match: http not https, localhost not 127.0.0.1, port 8001)
+[ ] Downloaded that JSON and renamed it to   login_client.json
+
+
+3. FILES IN THE PROJECT FOLDER  (none of these are in the repo)
+---------------------------------------------------------------
+[ ] login_client.json      the Web client you just downloaded
+[ ] .env                   copy of .env.example, then:
+                             BASE_URL=http://localhost:8001
+                             SESSION_SECRET=<long random text>
+                           generate one with:
+                             python -c "import secrets; print(secrets.token_urlsafe(32))"
+[ ] approved.json          copy of approved.example.json, then put the two real
+                           addresses in:  worker under "employees",
+                                          manager under "managers"
+                           (they must be different: nobody approves their own request)
+
+    Exact file and line to change: see
+    "Setup - which file, which line (for the organizer).txt"
+
+
+4. THE PROGRAM
+--------------
+[ ] python -m venv .venv
+[ ] source .venv/bin/activate        (Windows: .venv\Scripts\activate)
+[ ] pip install -r requirements.txt
+[ ] uvicorn app.main:app --port 8001
+[ ] http://localhost:8001/docs opens
+    If port 8001 is busy, use another port BUT then change BASE_URL and add the
+    matching redirect URI in Google Cloud.
+
+
+5. BROWSERS  (one cookie jar = one signed-in person)
+-----------------------------------------------------
+[ ] Use CHROME. Firefox tracking protection breaks Google sign-in
+    ("Something went wrong" on accounts.google.com).
+[ ] Window A = worker      (normal Chrome window)
+[ ] Window B = manager     (a SECOND CHROME PROFILE, not incognito -
+                            incognito forgets everything when closed and you
+                            would repeat the 2-step verification each time)
+[ ] Gmail signed in in each window with the matching account
+
+
+6. RUNNING THE DEMO
+-------------------
+Start the server first:
+
+    uvicorn app.main:app --port 8001
+
+Then, as the WORKER:
+
+ 1. Open  http://localhost:8001/login   and sign in with the worker account
+    (tick the box that allows sending email)
+ 2. You land on /docs. Check with  GET /me  that it shows the worker.
+ 3. POST /nghiphep  ->  Try it out  ->  fill in and Execute:
+
+        {
+          "manager_email": "<the manager's TDTU address>",
+          "reason": "Family trip",
+          "from_date": "2026-10-01",
+          "to_date": "2026-10-03"
+        }
+
+    Answer: 201 with "status": "PENDING".
+    The request email has just been sent FROM the worker's mailbox.
+
+Then, as the MANAGER:
+
+ 4. Sign in as the manager:
+       - two windows:  do it in the second Chrome profile, or
+       - one window:   open  http://localhost:8001/login  again and pick the
+                       manager account (no need to log out first)
+ 5. Open the manager's mailbox, find  [ABSENT #1]  (check Spam the first time)
+ 6. Click  "Yes, approve"  (or "No, reject")
+    The browser shows "Request approved".
+    The result email has just been sent FROM the manager's mailbox.
+
+Finally, back as the worker:
+
+ 7. The worker's mailbox has the result email, from the manager's address.
+ 8. GET /nghiphep/1  shows  "status": "APPROVED".
+
+Note: the request must be made BEFORE the manager clicks, and the server must
+keep running the whole time - requests are kept in memory only.

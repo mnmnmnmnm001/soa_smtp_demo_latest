@@ -1,0 +1,68 @@
+RUN COMMANDS
+============
+Project folder:  ~/Documents/SOA/demo_smtp
+
+
+START THE DEMO  (this is all you need once it is set up)
+--------------------------------------------------------
+    cd ~/Documents/SOA/demo_smtp
+    ./.venv/bin/uvicorn app.main:app --port 8001
+
+Leave it running. Ctrl+C stops it.
+Restarting wipes every request and sign-in (everything is kept in memory).
+
+
+IN THE BROWSER  (Chrome)
+------------------------
+    http://localhost:8001/login      sign in  (worker first, manager later)
+    http://localhost:8001/docs       the API page
+    http://localhost:8001/me         who is signed in now
+    http://localhost:8001/logout     sign out and revoke at Google
+
+Use "localhost", not 127.0.0.1.
+To force the account chooser / consent screen:
+    http://localhost:8001/login?force=1
+
+
+BODY TO PASTE INTO  POST /nghiphep
+-----------------------------------
+    {
+      "manager_email": "<the manager's TDTU address>",
+      "reason": "Family trip",
+      "from_date": "2026-10-01",
+      "to_date": "2026-10-03"
+    }
+
+
+FIRST TIME ONLY  (or on a new computer)
+----------------------------------------
+    cd ~/Documents/SOA/demo_smtp
+    python3 -m venv .venv
+    ./.venv/bin/pip install -r requirements.txt
+    cp .env.example .env                        # set SESSION_SECRET and BASE_URL
+    cp approved.example.json approved.json      # put the two real TDTU addresses
+
+    # generate a value for SESSION_SECRET:
+    ./.venv/bin/python -c "import secrets; print(secrets.token_urlsafe(32))"
+
+Also needed in the folder: login_client.json  (downloaded from Google Cloud)
+
+
+USEFUL CHECKS
+-------------
+    # is the server up?
+    curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8001/docs
+
+    # is something already using port 8001?
+    ss -ltn | grep 8001
+
+    # stop a server left running in the background
+    pkill -f "uvicorn app.main:app"
+
+
+IF YOU CHANGE THE PORT
+----------------------
+    1. run with        --port <new>
+    2. .env            BASE_URL=http://localhost:<new>
+    3. Google Cloud    add redirect URI  http://localhost:<new>/auth/callback
+    All three must match, or sign-in fails with redirect_uri_mismatch.
