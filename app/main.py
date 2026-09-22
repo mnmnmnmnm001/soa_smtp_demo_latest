@@ -1,11 +1,10 @@
 """The API.  Run:  uvicorn app.main:app --reload
-
   1. worker   POST /nghiphep           -> PENDING, emails the manager (from the worker)
   2. manager  clicks Yes / No          -> GET /nghiphep/{id}/decision
   3.          the answer is saved      -> APPROVED or REJECTED
   4.          emails the worker (from the manager) and shows a small page
 """
-import hmac
+import hmac #Hash-based Message Authentication Code
 import os
 import secrets
 from datetime import date, datetime, timedelta, timezone
@@ -35,7 +34,6 @@ class AbsenceIn(BaseModel):
     from_date: date
     to_date: date
 
-
 def as_json(req):
     """Listed field by field so the secret token can never leak."""
     return {
@@ -48,12 +46,9 @@ def as_json(req):
         "reason": req.reason,
     }
 
-
 def page(title, message, color, status=200):
-    html = mail.templates.get_template("decision_page.html").render(
-        title=title, message=message, color=color)
+    html = mail.templates.get_template("decision_page.html").render(title=title, message=message, color=color)
     return HTMLResponse(html, status_code=status)
-
 
 @app.post("/nghiphep", status_code=201)
 def create_absence(body: AbsenceIn, request: Request):
@@ -61,8 +56,8 @@ def create_absence(body: AbsenceIn, request: Request):
     manager = body.manager_email.lower()
 
     # Checked before saving or emailing, so a refused request leaves no trace.
-    if employee == manager:
-        raise HTTPException(400, "You cannot be your own manager.")
+    #if employee == manager:
+    #    raise HTTPException(400, "You cannot be your own manager.")
     if not store.is_approved(employee, "employees"):
         raise HTTPException(403, f"{employee} is not on the approved employee list")
     if not store.is_approved(manager, "managers"):
@@ -77,15 +72,13 @@ def create_absence(body: AbsenceIn, request: Request):
     return {"id": req.id, "status": req.status,
             "message": f"Email with Yes / No buttons sent to {req.manager_email}."}
 
-
 @app.get("/nghiphep/{request_id}/decision", response_class=HTMLResponse)
 def decide(request_id: int, answer: str, token: str, request: Request):
     req = store.get(request_id)
 
     # One answer for all three: telling them apart would help somebody guessing.
     # compare_digest takes constant time, so the token cannot be found letter by letter.
-    if (req is None or answer not in ("yes", "no")
-            or not hmac.compare_digest(token, req.token)):
+    if (req is None or answer not in ("yes", "no") or not hmac.compare_digest(token, req.token)):
         return page("Invalid link", "This link is not valid.", "#d93025", 400)
 
     # The link alone is not enough, so a forwarded email is useless.
@@ -114,7 +107,7 @@ def decide(request_id: int, answer: str, token: str, request: Request):
         return page("Link expired", "This request is too old to be answered.", "#f29900", 410)
 
     updated = store.decide(request_id, answer == "yes")
-    if updated is None:   # two clicks in the same instant
+    if updated is None:   # 2 clicks in the same instant
         return page("Already answered", "This request was already answered.", "#5f6368")
 
     try:
@@ -130,15 +123,12 @@ def decide(request_id: int, answer: str, token: str, request: Request):
                 f"Thank you. {updated.employee_email} has been notified by email.",
                 "#188038" if approved else "#d93025")
 
-
 @app.get("/nghiphep")
 def list_absences(request: Request):
-    """Only your own requests: a reason is private."""
+    """Get only your own requests because it is private"""
     email = auth.require_user(request)
-    return [as_json(req) for req in store.all_requests()
-            if email in (req.employee_email, req.manager_email)]
-
-
+    return [as_json(req) for req in store.all_requests() if email in (req.employee_email, req.manager_email)]
+  
 @app.get("/nghiphep/{request_id}")
 def get_absence(request_id: int, request: Request):
     email = auth.require_user(request)
